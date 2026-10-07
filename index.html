@@ -45,6 +45,58 @@ input,textarea{width:100%;background:var(--bg);border:1px solid var(--line);bord
 const SUPABASE_URL = 'PASTE_PROJECT_URL';
 const SUPABASE_KEY = 'PASTE_ANON_PUBLIC_KEY';
 // ===================================================
+
+// Demo fallback: agar Supabase keys abhi set nahi hain to app browser mein local demo mode mein chalegi.
+const DEMO_MODE = SUPABASE_URL.includes('PASTE_') || SUPABASE_KEY.includes('PASTE_');
+
+if (DEMO_MODE) {
+  const STORE = 'netglance_demo_v1';
+  const uid = () => crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36)+Math.random().toString(36).slice(2);
+  const load = () => JSON.parse(localStorage.getItem(STORE) || '{"users":[],"profiles":[],"posts":[],"likes":[],"comments":[],"follows":[],"messages":[]}');
+  const save = d => localStorage.setItem(STORE, JSON.stringify(d));
+  let D = load();
+  const now = () => new Date().toISOString();
+  const matches = (row, cond) => Object.entries(cond).every(([k,v]) => row[k] === v);
+  const builder = (table) => {
+    let filters=[], inFilters=[], search=[], sort=null, lim=null, wantSingle=false, head=false, countMode=false, insertRows=null, updatePatch=null, del=false;
+    const b = {
+      select(cols, opts={}) { countMode=opts.count==='exact'; head=!!opts.head; return b; },
+      eq(k,v){filters.push([k,v]);return b;}, match(o){Object.entries(o).forEach(x=>filters.push(x));return b;},
+      in(k,vs){inFilters.push([k,vs]);return b;}, ilike(k,v){search.push([k,v]);return b;},
+      order(k,o={}){sort=[k,o.ascending!==false];return b;}, limit(n){lim=n;return b;},
+      single(){wantSingle=true;return b;},
+      or(){return b;},
+      insert(rows){insertRows=Array.isArray(rows)?rows:[rows];return b;},
+      update(p){updatePatch=p;return b;}, delete(){del=true;return b;},
+      then(resolve){ return Promise.resolve(run()).then(resolve); }
+    };
+    async function run(){
+      D=load();
+      if(insertRows){
+        const out=insertRows.map(x=>({...x,id:x.id||uid(),created_at:x.created_at||now()}));
+        D[table].push(...out); save(D); return {data:wantSingle?out[0]:out,error:null};
+      }
+      let rows=[...(D[table]||[])].filter(r=>filters.every(([k,v])=>r[k]===v)).filter(r=>inFilters.every(([k,vs])=>vs.includes(r[k])));
+      for(const [k,v] of search){const q=String(v).replace(/%/g,'').toLowerCase();rows=rows.filter(r=>String(r[k]||'').toLowerCase().includes(q));}
+      if(del){D[table]=(D[table]||[]).filter(r=>!filters.every(([k,v])=>r[k]===v));save(D);return {data:null,error:null};}
+      if(updatePatch){rows.forEach(r=>Object.assign(r,updatePatch));save(D);return {data:rows,error:null};}
+      if(sort) rows.sort((a,b)=>{const x=new Date(a[sort[0]])-new Date(b[sort[0]]);return sort[1]?x:-x;});
+      if(lim) rows=rows.slice(0,lim);
+      if(countMode)return {data:head?null:rows,count:rows.length,error:null};
+      if(table==='profiles' && wantSingle)return {data:rows[0]||null,error:rows[0]?null:{message:'Not found'}};
+      if(wantSingle)return {data:rows[0]||null,error:null};
+      return {data:rows,error:null};
+    }
+    return b;
+  };
+  const demoAuth={
+    async getSession(){const id=localStorage.getItem('netglance_user');const u=D.users.find(x=>x.id===id);return {data:{session:u?{user:u}:null}};},
+    async signUp({email,password,options}){D=load();if(D.users.some(u=>u.email===email))return {error:{message:'Email already registered'}};const u={id:uid(),email,password,created_at:now()};D.users.push(u);D.profiles.push({id:u.id,username:options?.data?.username||email.split('@')[0],bio:'',avatar_url:''});save(D);localStorage.setItem('netglance_user',u.id);return {data:{session:{user:u}},error:null};},
+    async signInWithPassword({email,password}){D=load();const u=D.users.find(x=>x.email===email&&x.password===password);if(!u)return {error:{message:'Invalid email or password'}};localStorage.setItem('netglance_user',u.id);return {data:{session:{user:u}},error:null};},
+    async signOut(){localStorage.removeItem('netglance_user');return {error:null};}
+  };
+  window.supabase.createClient=()=>({auth:demoAuth,from:builder,storage:{from:()=>({upload:async()=>({error:null}),getPublicUrl:p=>({data:{publicUrl:p}})})},removeChannel:()=>{},channel:()=>({on(){return this},subscribe(){return this}})});
+}
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const $ = s => document.querySelector(s), app = $('#app');
 let me = null, mine = null, chan = null;
