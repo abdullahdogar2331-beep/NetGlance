@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nazara</title>
+<style>
+:root{--bg:#0F0B1E;--card:#1A1530;--text:#F5F3FF;--muted:#A09BB8;--heart:#FF4D6D;--g:linear-gradient(45deg,#7C3AED,#EC4899,#F59E0B);--line:#2b2447}
+*{box-sizing:border-box;margin:0}
+body{background:var(--bg);color:var(--text);font-family:system-ui,Segoe UI,Arial,sans-serif;padding-bottom:70px}
+button,input,textarea{font:inherit;color:inherit}
+.logo{font-size:28px;font-weight:800;background:var(--g);-webkit-background-clip:text;background-clip:text;color:transparent}
+.wrap{max-width:560px;margin:auto;padding:14px}
+.top{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--bg);z-index:5}
+.nav{position:fixed;bottom:0;left:0;right:0;display:flex;justify-content:space-around;background:var(--card);border-top:1px solid var(--line);padding:10px 0;z-index:5}
+.nav button{background:none;border:0;font-size:22px;cursor:pointer;opacity:.7}.nav button.on{opacity:1}
+.card{background:var(--card);border-radius:14px;margin-bottom:16px;overflow:hidden}
+.card img.post{width:100%;display:block;max-height:560px;object-fit:cover}
+.pad{padding:10px 12px}
+.row{display:flex;align-items:center;gap:10px}
+.av{width:36px;height:36px;border-radius:50%;object-fit:cover;background:var(--g);flex:none}
+.av.big{width:84px;height:84px}
+.u{font-weight:600;cursor:pointer}
+.m{color:var(--muted);font-size:14px}
+input,textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:11px;margin:6px 0}
+.btn{background:var(--g);border:0;border-radius:10px;padding:10px 18px;font-weight:600;cursor:pointer;color:#fff}
+.btn.o{background:none;border:1px solid var(--line)}
+.ic{background:none;border:0;font-size:24px;cursor:pointer}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:3px;margin-top:14px}
+.grid img{width:100%;aspect-ratio:1;object-fit:cover;cursor:pointer}
+.auth{max-width:380px;margin:12vh auto;padding:24px;background:var(--card);border-radius:18px;text-align:center}
+.auth .logo{font-size:44px}
+.msgs{height:55vh;overflow:auto;display:flex;flex-direction:column;gap:6px;padding:8px 0}
+.b{max-width:75%;padding:8px 12px;border-radius:16px;background:var(--line);word-wrap:break-word}
+.b.me{align-self:flex-end;background:#7C3AED}
+.item{padding:10px;border-radius:10px;cursor:pointer}.item:hover{background:var(--card)}
+#err{color:var(--heart);font-size:14px;margin-top:8px}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script>
+// ====== YAHAN APNI SUPABASE KEYS PASTE KAREIN ======
+const SUPABASE_URL = 'PASTE_PROJECT_URL';
+const SUPABASE_KEY = 'PASTE_ANON_PUBLIC_KEY';
+// ===================================================
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const $ = s => document.querySelector(s), app = $('#app');
+let me = null, mine = null, chan = null;
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const av = p => p?.avatar_url ? `<img class="av" src="${esc(p.avatar_url)}">` : `<div class="av"></div>`;
+const ago = d => { const s = (Date.now() - new Date(d)) / 1000; return s < 60 ? 'now' : s < 3600 ? ~~(s/60)+'m' : s < 86400 ? ~~(s/3600)+'h' : ~~(s/86400)+'d'; };
+
+async function boot() {
+  const { data } = await sb.auth.getSession();
+  me = data.session?.user || null;
+  if (!me) return authView();
+  mine = (await sb.from('profiles').select('*').eq('id', me.id).single()).data;
+  shell(); go('home');
+}
+
+function authView(signup = false) {
+  app.innerHTML = `<div class="auth"><div class="logo">Nazara</div><p class="m">Apni duniya share karein</p><br>
+  ${signup ? '<input id="un" placeholder="Username">' : ''}
+  <input id="em" type="email" placeholder="Email"><input id="pw" type="password" placeholder="Password (min 6)">
+  <br><button class="btn" style="width:100%" id="go">${signup ? 'Sign up' : 'Log in'}</button><div id="err"></div>
+  <p class="m" style="margin-top:14px">${signup ? 'Account hai?' : 'Account nahi hai?'} <a href="#" id="sw" style="color:#EC4899">${signup ? 'Log in' : 'Sign up'}</a></p></div>`;
+  $('#sw').onclick = e => { e.preventDefault(); authView(!signup); };
+  $('#go').onclick = async () => {
+    const email = $('#em').value.trim(), password = $('#pw').value;
+    const r = signup
+      ? await sb.auth.signUp({ email, password, options: { data: { username: $('#un').value.trim().toLowerCase().replace(/\s+/g, '_') } } })
+      : await sb.auth.signInWithPassword({ email, password });
+    if (r.error) return $('#err').textContent = r.error.message;
+    if (signup && !r.data.session) return $('#err').textContent = 'Email confirm karein (ya Supabase mein Confirm email off karein), phir login.';
+    boot();
+  };
+}
+
+function shell() {
+  app.innerHTML = `<div class="top"><span class="logo">Nazara</span><button class="btn o" id="lo">Logout</button></div>
+  <div class="wrap" id="view"></div>
+  <div class="nav">${[['home','🏠'],['explore','🔍'],['new','➕'],['msgs','💬'],['me','👤']].map(([k,i]) => `<button data-k="${k}">${i}</button>`).join('')}</div>`;
+  $('#lo').onclick = async () => { await sb.auth.signOut(); boot(); };
+  document.querySelectorAll('.nav button').forEach(b => b.onclick = () => go(b.dataset.k));
+}
+
+function go(k, arg) {
+  if (chan) { sb.removeChannel(chan); chan = null; }
+  document.querySelectorAll('.nav button').forEach(b => b.classList.toggle('on', b.dataset.k === k));
+  ({ home, explore, new: newPost, msgs, me: () => profile(mine.username), user: profile, chat })[k](arg);
+}
+
+// ---------- POSTS ----------
+function postHTML(p) {
+  const liked = p.likes.some(l => l.user_id === me.id);
+  return `<div class="card" data-id="${p.id}">
+  <div class="pad row"><span class="row u" data-u="${esc(p.profiles.username)}">${av(p.profiles)} ${esc(p.profiles.username)}</span><span class="m" style="margin-left:auto">${ago(p.created_at)}</span></div>
+  <img class="post" src="${esc(p.image_url)}" loading="lazy">
+  <div class="pad"><button class="ic lk">${liked ? '❤️' : '🤍'}</button><button class="ic cm">💬</button>
+  ${p.user_id === me.id ? '<button class="ic dl" style="float:right">🗑️</button>' : ''}
+  <div><b class="cnt">${p.likes.length}</b> likes</div>
+  <div><b>${esc(p.profiles.username)}</b> ${esc(p.caption)}</div><div class="cbox"></div></div></div>`;
+}
+function wire(root, posts) {
+  root.querySelectorAll('.u').forEach(e => e.onclick = () => go('user', e.dataset.u));
+  root.querySelectorAll('.card').forEach(c => {
+    const p = posts.find(x => x.id == c.dataset.id); if (!p) return;
+    c.querySelector('.lk').onclick = async e => {
+      const liked = p.likes.some(l => l.user_id === me.id);
+      if (liked) { await sb.from('likes').delete().match({ post_id: p.id, user_id: me.id }); p.likes = p.likes.filter(l => l.user_id !== me.id); }
+      else { await sb.from('likes').insert({ post_id: p.id, user_id: me.id }); p.likes.push({ user_id: me.id }); }
+      e.target.textContent = liked ? '🤍' : '❤️'; c.querySelector('.cnt').textContent = p.likes.length;
+    };
+    const dl = c.querySelector('.dl');
+    if (dl) dl.onclick = async () => { if (confirm('Post delete karein?')) { await sb.from('posts').delete().eq('id', p.id); c.remove(); } };
+    c.querySelector('.cm').onclick = () => comments(c, p);
+  });
+}
+async function comments(c, p) {
+  const box = c.querySelector('.cbox');
+  const { data } = await sb.from('comments').select('*, profiles(username)').eq('post_id', p.id).order('created_at');
+  box.innerHTML = (data || []).map(x => `<div class="m"><b>${esc(x.profiles.username)}</b> ${esc(x.text)}</div>`).join('') + `<div class="row"><input placeholder="Comment likhein..."><button class="btn">Post</button></div>`;
+  box.querySelector('.btn').onclick = async () => {
+    const t = box.querySelector('input').value.trim(); if (!t) return;
+    await sb.from('comments').insert({ post_id: p.id, user_id: me.id, text: t }); comments(c, p);
+  };
+}
+const Q = '*, profiles(username,avatar_url), likes(user_id)';
+
+async function home() {
+  const v = $('#view'); v.innerHTML = '<p class="m">Loading...</p>';
+  const f = (await sb.from('follows').select('following_id').eq('follower_id', me.id)).data || [];
+  const ids = [me.id, ...f.map(x => x.following_id)];
+  const { data } = await sb.from('posts').select(Q).in('user_id', ids).order('created_at', { ascending: false }).limit(30);
+  v.innerHTML = data?.length ? data.map(postHTML).join('') : '<p class="m" style="text-align:center;margin-top:40px">Feed khali hai. Explore se logon ko follow karein ya apni pehli post daalein!</p>';
+  wire(v, data || []);
+}
+
+async function explore() {
+  const v = $('#view');
+  v.innerHTML = '<input id="q" placeholder="Users search karein..."><div id="res"></div><div id="ex"></div>';
+  const { data } = await sb.from('posts').select(Q).order('created_at', { ascending: false }).limit(30);
+  $('#ex').innerHTML = data?.map(postHTML).join('') || ''; wire($('#ex'), data || []);
+  $('#q').oninput = async e => {
+    const t = e.target.value.trim();
+    if (!t) return $('#res').innerHTML = '';
+    const r = (await sb.from('profiles').select('*').ilike('username', `%${t}%`).limit(8)).data || [];
+    $('#res').innerHTML = r.map(p => `<div class="item row u" data-u="${esc(p.username)}">${av(p)} ${esc(p.username)}</div>`).join('');
+    wire($('#res'), []);
+  };
+}
+
+function newPost() {
+  $('#view').innerHTML = `<h3>Nayi post</h3><input type="file" id="f" accept="image/*"><img id="pv" style="width:100%;border-radius:12px;margin:8px 0;display:none"><textarea id="cap" rows="3" placeholder="Caption..."></textarea><button class="btn" id="sh">Share</button><div id="err"></div>`;
+  $('#f').onchange = e => { const f = e.target.files[0]; if (f) { $('#pv').src = URL.createObjectURL(f); $('#pv').style.display = 'block'; } };
+  $('#sh').onclick = async () => {
+    const f = $('#f').files[0]; if (!f) return $('#err').textContent = 'Pehle photo chunein';
+    $('#sh').disabled = true; $('#sh').textContent = 'Uploading...';
+    const url = await upload(f); if (!url) { $('#sh').disabled = false; return $('#err').textContent = 'Upload fail'; }
+    await sb.from('posts').insert({ user_id: me.id, image_url: url, caption: $('#cap').value });
+    go('home');
+  };
+}
+async function upload(file) {
+  const path = `${me.id}/${Date.now()}_${file.name.replace(/[^\w.]/g, '')}`;
+  const { error } = await sb.storage.from('media').upload(path, file);
+  return error ? null : sb.storage.from('media').getPublicUrl(path).data.publicUrl;
+}
+
+// ---------- PROFILE ----------
+async function profile(username) {
+  const v = $('#view'); v.innerHTML = '<p class="m">Loading...</p>';
+  const p = (await sb.from('profiles').select('*').eq('username', username).single()).data;
+  if (!p) return v.innerHTML = '<p class="m">User nahi mila</p>';
+  const [po, fr, fg, isf] = await Promise.all([
+    sb.from('posts').select(Q).eq('user_id', p.id).order('created_at', { ascending: false }),
+    sb.from('follows').select('*', { count: 'exact', head: true }).eq('following_id', p.id),
+    sb.from('follows').select('*', { count: 'exact', head: true }).eq('follower_id', p.id),
+    sb.from('follows').select('*').match({ follower_id: me.id, following_id: p.id })]);
+  const posts = po.data || [], own = p.id === me.id; let following = isf.data?.length > 0;
+  v.innerHTML = `<div class="row" style="gap:18px">${p.avatar_url ? `<img class="av big" src="${esc(p.avatar_url)}">` : '<div class="av big"></div>'}
+  <div><h3>${esc(p.username)}</h3><div class="m"><b>${posts.length}</b> posts · <b id="fc">${fr.count}</b> followers · <b>${fg.count}</b> following</div></div></div>
+  <p style="margin:10px 0">${esc(p.bio)}</p><div class="row" id="acts"></div>
+  <div class="grid">${posts.map(x => `<img src="${esc(x.image_url)}" data-id="${x.id}">`).join('')}</div><div id="one"></div>`;
+  const acts = $('#acts');
+  if (own) {
+    acts.innerHTML = '<button class="btn o" id="eb">Bio edit</button><button class="btn o" id="ea">Photo badlein</button><input type="file" id="af" accept="image/*" hidden>';
+    $('#eb').onclick = async () => { const b = prompt('Nayi bio:', p.bio); if (b !== null) { await sb.from('profiles').update({ bio: b }).eq('id', me.id); mine.bio = b; profile(username); } };
+    $('#ea').onclick = () => $('#af').click();
+    $('#af').onchange = async e => { const u = await upload(e.target.files[0]); if (u) { await sb.from('profiles').update({ avatar_url: u }).eq('id', me.id); mine.avatar_url = u; profile(username); } };
+  } else {
+    acts.innerHTML = `<button class="btn" id="fb"></button><button class="btn o" id="mb">Message</button>`;
+    const fb = $('#fb'); const set = () => { fb.textContent = following ? 'Following ✓' : 'Follow'; };
+    set();
+    fb.onclick = async () => {
+      if (following) await sb.from('follows').delete().match({ follower_id: me.id, following_id: p.id });
+      else await sb.from('follows').insert({ follower_id: me.id, following_id: p.id });
+      following = !following; set(); $('#fc').textContent = +$('#fc').textContent + (following ? 1 : -1);
+    };
+    $('#mb').onclick = () => go('chat', p);
+  }
+  v.querySelectorAll('.grid img').forEach(i => i.onclick = () => {
+    const x = posts.find(z => z.id == i.dataset.id); $('#one').innerHTML = postHTML(x); wire($('#one'), posts); $('#one').scrollIntoView();
+  });
+}
+
+// ---------- MESSAGES ----------
+async function msgs() {
+  const v = $('#view'); v.innerHTML = '<h3>Messages</h3><div id="ls" class="m">Loading...</div>';
+  const { data } = await sb.from('messages').select('*').or(`sender_id.eq.${me.id},receiver_id.eq.${me.id}`).order('created_at', { ascending: false });
+  const ids = [...new Set((data || []).map(m => m.sender_id === me.id ? m.receiver_id : m.sender_id))];
+  if (!ids.length) return $('#ls').textContent = 'Koi chat nahi. Kisi ki profile se Message dabayein.';
+  const ps = (await sb.from('profiles').select('*').in('id', ids)).data || [];
+  $('#ls').innerHTML = ids.map(id => { const p = ps.find(x => x.id === id); return p ? `<div class="item row" data-id="${id}">${av(p)} ${esc(p.username)}</div>` : ''; }).join('');
+  $('#ls').querySelectorAll('.item').forEach(e => e.onclick = () => go('chat', ps.find(x => x.id === e.dataset.id)));
+}
+async function chat(p) {
+  const v = $('#view');
+  v.innerHTML = `<div class="row u" id="who">${av(p)} <b>${esc(p.username)}</b></div><div class="msgs" id="ms"></div><div class="row"><input id="mt" placeholder="Message..."><button class="btn" id="sd">Send</button></div>`;
+  $('#who').onclick = () => go('user', p.username);
+  const add = m => { const d = document.createElement('div'); d.className = 'b' + (m.sender_id === me.id ? ' me' : ''); d.textContent = m.text; $('#ms').appendChild(d); $('#ms').scrollTop = 1e9; };
+  const { data } = await sb.from('messages').select('*').or(`and(sender_id.eq.${me.id},receiver_id.eq.${p.id}),and(sender_id.eq.${p.id},receiver_id.eq.${me.id})`).order('created_at');
+  (data || []).forEach(add);
+  chan = sb.channel('dm-' + me.id + '-' + p.id).on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `receiver_id=eq.${me.id}` }, e => { if (e.new.sender_id === p.id) add(e.new); }).subscribe();
+  const send = async () => {
+    const t = $('#mt').value.trim(); if (!t) return; $('#mt').value = '';
+    const { data: m } = await sb.from('messages').insert({ sender_id: me.id, receiver_id: p.id, text: t }).select().single(); if (m) add(m);
+  };
+  $('#sd').onclick = send; $('#mt').onkeydown = e => { if (e.key === 'Enter') send(); };
+}
+
+boot();
+</script>
+</body>
+</html>
